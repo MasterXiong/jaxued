@@ -7,6 +7,20 @@ from enum import IntEnum
 import numpy as np
 from typing import Callable
 
+
+def compute_maze_distance(wall_maps: jnp.array):
+    """
+    This function takes in N wall maps, and compute the pair-wise distance between the maps
+    """
+    wall_maps = wall_maps.reshape(wall_maps.shape[0], -1)
+    squared_norms = jnp.sum(wall_maps ** 2, axis=1, keepdims=True)
+    
+    # Compute the pairwise squared Euclidean distance matrix
+    distances = squared_norms + squared_norms.T - 2 * jnp.dot(wall_maps, wall_maps.T)
+    
+    return distances
+
+
 def make_level_generator(height: int, width: int, n_walls: int) -> Callable[[chex.PRNGKey], Level]:
     """This takes in a height, width and number of walls and returns a function that takes in a PRNGKey and returns a level.
 

@@ -23,6 +23,11 @@ from jaxued.wrappers import AutoReplayWrapper
 import chex
 from enum import IntEnum
 
+import pickle
+
+from jaxued.environments.maze.util import compute_maze_distance
+
+
 class UpdateState(IntEnum):
     DR = 0
     REPLAY = 1
@@ -527,6 +532,7 @@ def main(config=None, project="JAXUED_TEST"):
             rng, rng_levels, rng_reset = jax.random.split(rng, 3)
             new_levels = jax.vmap(sample_random_level)(jax.random.split(rng_levels, config["num_train_envs"]))
             # new_levels.wall_map is of shape n_env * width * height
+            maze_distances = compute_maze_distance(new_levels.wall_map.astype(float))
             init_obs, init_env_state = jax.vmap(env.reset_to_level, in_axes=(0, 0, None))(jax.random.split(rng_reset, config["num_train_envs"]), new_levels, env_params)
             # Rollout
             (
@@ -567,6 +573,8 @@ def main(config=None, project="JAXUED_TEST"):
             metrics = {
                 "losses": jax.tree.map(lambda x: x.mean(), losses),
                 "mean_num_blocks": new_levels.wall_map.sum() / config["num_train_envs"],
+                "mean_maze_distance": maze_distances.mean(),
+                "mode_id": 0,
             }
             
             train_state = train_state.replace(
@@ -586,6 +594,7 @@ def main(config=None, project="JAXUED_TEST"):
             # Collect trajectories on replay levels
             rng, rng_levels, rng_reset = jax.random.split(rng, 3)
             sampler, (level_inds, levels) = level_sampler.sample_replay_levels(sampler, rng_levels, config["num_train_envs"])
+            maze_distances = compute_maze_distance(levels.wall_map.astype(float))
             init_obs, init_env_state = jax.vmap(env.reset_to_level, in_axes=(0, 0, None))(jax.random.split(rng_reset, config["num_train_envs"]), levels, env_params)
             (
                 (rng, train_state, hstate, last_obs, last_env_state, last_value),
@@ -625,6 +634,8 @@ def main(config=None, project="JAXUED_TEST"):
             metrics = {
                 "losses": jax.tree.map(lambda x: x.mean(), losses),
                 "mean_num_blocks": levels.wall_map.sum() / config["num_train_envs"],
+                "mean_maze_distance": maze_distances.mean(),
+                "mode_id": 1,
             }
             
             train_state = train_state.replace(
@@ -646,6 +657,7 @@ def main(config=None, project="JAXUED_TEST"):
             # mutate
             parent_levels = train_state.replay_last_level_batch
             child_levels = jax.vmap(mutate_level, (0, 0, None))(jax.random.split(rng_mutate, config["num_train_envs"]), parent_levels, config["num_edits"])
+            maze_distances = compute_maze_distance(child_levels.wall_map.astype(float))
             init_obs, init_env_state = jax.vmap(env.reset_to_level, in_axes=(0, 0, None))(jax.random.split(rng_reset, config["num_train_envs"]), child_levels, env_params)
 
             # rollout
@@ -687,6 +699,8 @@ def main(config=None, project="JAXUED_TEST"):
             metrics = {
                 "losses": jax.tree.map(lambda x: x.mean(), losses),
                 "mean_num_blocks": child_levels.wall_map.sum() / config["num_train_envs"],
+                "mean_maze_distance": maze_distances.mean(),
+                "mode_id": 2,
             }
             
             train_state = train_state.replace(
@@ -818,11 +832,20 @@ def main(config=None, project="JAXUED_TEST"):
     # And run the train_eval_sep function for the specified number of updates
     if config["checkpoint_save_interval"] > 0:
         checkpoint_manager = setup_checkpointing(config, train_state, env, env_params)
+    mean_maze_distance, iter_mode = [], []
+    os.makedirs(f'logs/{config["run_name"]}/{config["seed"]}', exist_ok=True)
     for eval_step in range(config["num_updates"] // config["eval_freq"]):
         start_time = time.time()
         runner_state, metrics = train_and_eval_step(runner_state, None)
         curr_time = time.time()
         metrics['time_delta'] = curr_time - start_time
+
+        # save maze distance stats
+        mean_maze_distance.append(metrics["mean_maze_distance"])
+        iter_mode.append(metrics["mode_id"])
+        with open(f'logs/{config["run_name"]}/{config["seed"]}/mean_maze_distance.pkl', 'wb') as f:
+            pickle.dump([mean_maze_distance, iter_mode], f)
+
         log_eval(metrics, train_state_to_log_dict(runner_state[1], level_sampler))
         if config["checkpoint_save_interval"] > 0:
             checkpoint_manager.save(eval_step, args=ocp.args.StandardSave(runner_state[1]))
