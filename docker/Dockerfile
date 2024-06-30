@@ -55,6 +55,7 @@ WORKDIR /user/jaxued
 
 # Change permissions
 RUN useradd --shell /bin/bash -u ${USER_ID} -o -d /user user
+RUN chown user:user /user
 
 # Set python ENV variables
 ENV PYTHONUNBUFFERED=1
