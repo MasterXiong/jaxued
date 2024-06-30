@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxued.environments.underspecified_env import Level
+from jaxued.environments.maze.util import compute_maze_distance
 
 Prioritization = Literal["rank", "topk"]
 
@@ -47,6 +48,7 @@ class LevelSampler:
         prioritization: Prioritization = "rank",
         prioritization_params: dict = None,
         duplicate_check: bool = False,
+        diversity_coeff: float = 0.,
     ):
         self.capacity = capacity
         self.replay_prob = replay_prob
@@ -55,6 +57,7 @@ class LevelSampler:
         self.prioritization = prioritization
         self.prioritization_params = prioritization_params
         self.duplicate_check = duplicate_check
+        self.diversity_coeff = diversity_coeff
         
         if prioritization_params is None:
             if prioritization == "rank":
@@ -107,7 +110,7 @@ class LevelSampler:
         proportion_filled = self._proportion_filled(sampler)
         return (proportion_filled >= self.minimum_fill_ratio) & (jax.random.uniform(rng) < self.replay_prob)
     
-    def sample_replay_level(self, sampler: Sampler, rng: chex.PRNGKey) -> Tuple[Sampler, Tuple[int, Level]]:
+    def sample_replay_level(self, carry, rng: chex.PRNGKey) -> Tuple[Sampler, Tuple[int, Level]]:
         """
         Samples a replay level from the buffer. It does this by first computing the weights of each level (using `level_weights`), and then sampling from the buffer using these weights. The `sampler` object is updated to reflect the new episode count and the level that was sampled. The level itself is returned as well as the index of the level in the buffer.
 
@@ -118,7 +121,8 @@ class LevelSampler:
         Returns:
             Tuple[Sampler, Tuple[int, Level]]: The updated sampler object, the sampled level's index and the level itself.
         """
-        weights = self.level_weights(sampler)
+        sampler, distance_to_sampled_levels, count = carry
+        weights = self.level_weights_for_curation(sampler, distance_to_sampled_levels)
         idx = jax.random.choice(rng, self.capacity, p=weights)
         new_episode_count = sampler["episode_count"] + 1
         sampler = {
@@ -126,7 +130,10 @@ class LevelSampler:
             "timestamps": sampler["timestamps"].at[idx].set(new_episode_count),
             "episode_count": new_episode_count,
         }
-        return sampler, (idx, jax.tree_map(lambda x: x[idx], sampler["levels"]))
+        distance_to_new_sampled_level = compute_maze_distance(sampler["levels"].wall_map[idx].reshape(1, -1).astype(float), sampler["levels"].wall_map.reshape(self.capacity, -1).astype(float)).ravel()
+        distance_to_sampled_levels = (distance_to_sampled_levels * count + distance_to_new_sampled_level) / (count + 1)
+        count += 1
+        return (sampler, distance_to_sampled_levels, count), (idx, jax.tree_map(lambda x: x[idx], sampler["levels"]))
     
     def sample_replay_levels(self, sampler: Sampler, rng: chex.PRNGKey, num: int) -> Tuple[Sampler, Tuple[chex.Array, Level]]:
         """
@@ -140,7 +147,9 @@ class LevelSampler:
         Returns:
             Tuple[Sampler, Tuple[chex.Array, Level]]: The updated sampler, an array of indices, and multiple levels.
         """
-        return jax.lax.scan(self.sample_replay_level, sampler, jax.random.split(rng, num), length=num)
+        distance_to_sampled_levels = jnp.zeros(self.capacity)
+        count = 0
+        return jax.lax.scan(self.sample_replay_level, (sampler, distance_to_sampled_levels, count), jax.random.split(rng, num), length=num)
     
     def insert(self, sampler: Sampler, level: Level, score: float, level_extra: dict=None) -> Tuple[Sampler, int]:
         """
@@ -289,6 +298,29 @@ class LevelSampler:
         w_c = self.staleness_weights(sampler)
         return (1 - self.staleness_coeff) * w_s + self.staleness_coeff * w_c
     
+    def level_weights_for_curation(self, sampler: Sampler, distance_to_sampled_levels, prioritization: Prioritization=None, prioritization_params: dict=None) -> chex.Array:
+        """
+        Returns the weights for each level, taking into account both staleness and score.
+
+        Args:
+            sampler (Sampler): The sampler
+            prioritization (Prioritization, optional): Possibly overrides self.prioritization. Defaults to None.
+            prioritization_params (dict, optional): Possibly overrides self.prioritization_params. Defaults to None.
+
+        Returns:
+            chex.Array: Weights, shape (self.capacity)
+        """
+        w_s = self.score_weights(sampler, prioritization, prioritization_params)
+        w_c = self.staleness_weights(sampler)
+        w_diversity = self.diversity_weights(sampler, distance_to_sampled_levels)
+        return (1 - self.staleness_coeff - self.diversity_coeff) * w_s + self.staleness_coeff * w_c + self.diversity_coeff * w_diversity
+
+    def diversity_weights(self, sampler, distance_to_sampled_levels):
+        mask = jnp.arange(self.capacity) < sampler["size"]
+        w_diversity = jnp.where(mask, distance_to_sampled_levels, 0.)
+        w_diversity = jax.lax.select(w_diversity.sum() > 0, w_diversity / w_diversity.sum(), mask / sampler["size"])
+        return w_diversity
+
     def score_weights(self, sampler: Sampler, prioritization: Prioritization=None, prioritization_params: dict=None) -> chex.Array:
         """
         Returns an array of shape (self.capacity) with the weights of each level (for sampling purposes).

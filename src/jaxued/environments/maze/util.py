@@ -8,15 +8,16 @@ import numpy as np
 from typing import Callable
 
 
-def compute_maze_distance(wall_maps: jnp.array):
+def compute_maze_distance(maze_A, maze_B):
     """
     This function takes in N wall maps, and compute the pair-wise distance between the maps
     """
-    wall_maps = wall_maps.reshape(wall_maps.shape[0], -1)
-    squared_norms = jnp.sum(wall_maps ** 2, axis=1, keepdims=True)
-    
-    # Compute the pairwise squared Euclidean distance matrix
-    distances = squared_norms + squared_norms.T - 2 * jnp.dot(wall_maps, wall_maps.T)
+    # Expand dimensions of A and B to enable broadcasting
+    A_expanded = maze_A[:, None, :]  # Shape: (M, 1, K)
+    B_expanded = maze_B[None, :, :]  # Shape: (1, N, K)
+
+    # Compute the squared differences and sum along the last dimension (K)
+    distances = jnp.sum((A_expanded - B_expanded) ** 2, axis=-1)  # Shape: (M, N)
     
     return distances
 

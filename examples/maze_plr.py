@@ -475,6 +475,7 @@ def main(config=None, project="JAXUED_TEST"):
         prioritization=config["prioritization"],
         prioritization_params={"temperature": config["temperature"], "k": config['topk_k']},
         duplicate_check=config['buffer_duplicate_check'],
+        diversity_coeff=config["diversity_coeff"],
     )
     
     @jax.jit
@@ -532,7 +533,8 @@ def main(config=None, project="JAXUED_TEST"):
             rng, rng_levels, rng_reset = jax.random.split(rng, 3)
             new_levels = jax.vmap(sample_random_level)(jax.random.split(rng_levels, config["num_train_envs"]))
             # new_levels.wall_map is of shape n_env * width * height
-            maze_distances = compute_maze_distance(new_levels.wall_map.astype(float))
+            flattened_wall_maps = new_levels.wall_map.reshape(config["num_train_envs"], -1).astype(float)
+            maze_distances = compute_maze_distance(flattened_wall_maps, flattened_wall_maps)
             init_obs, init_env_state = jax.vmap(env.reset_to_level, in_axes=(0, 0, None))(jax.random.split(rng_reset, config["num_train_envs"]), new_levels, env_params)
             # Rollout
             (
@@ -593,8 +595,9 @@ def main(config=None, project="JAXUED_TEST"):
             
             # Collect trajectories on replay levels
             rng, rng_levels, rng_reset = jax.random.split(rng, 3)
-            sampler, (level_inds, levels) = level_sampler.sample_replay_levels(sampler, rng_levels, config["num_train_envs"])
-            maze_distances = compute_maze_distance(levels.wall_map.astype(float))
+            (sampler, _, _), (level_inds, levels) = level_sampler.sample_replay_levels(sampler, rng_levels, config["num_train_envs"])
+            flattened_wall_maps = levels.wall_map.reshape(config["num_train_envs"], -1).astype(float)
+            maze_distances = compute_maze_distance(flattened_wall_maps, flattened_wall_maps)
             init_obs, init_env_state = jax.vmap(env.reset_to_level, in_axes=(0, 0, None))(jax.random.split(rng_reset, config["num_train_envs"]), levels, env_params)
             (
                 (rng, train_state, hstate, last_obs, last_env_state, last_value),
@@ -657,7 +660,8 @@ def main(config=None, project="JAXUED_TEST"):
             # mutate
             parent_levels = train_state.replay_last_level_batch
             child_levels = jax.vmap(mutate_level, (0, 0, None))(jax.random.split(rng_mutate, config["num_train_envs"]), parent_levels, config["num_edits"])
-            maze_distances = compute_maze_distance(child_levels.wall_map.astype(float))
+            flattened_wall_maps = child_levels.wall_map.reshape(config["num_train_envs"], -1).astype(float)
+            maze_distances = compute_maze_distance(flattened_wall_maps, flattened_wall_maps)
             init_obs, init_env_state = jax.vmap(env.reset_to_level, in_axes=(0, 0, None))(jax.random.split(rng_reset, config["num_train_envs"]), child_levels, env_params)
 
             # rollout
@@ -906,6 +910,7 @@ if __name__=="__main__":
     group.add_argument("--minimum_fill_ratio", type=float, default=0.5)
     group.add_argument("--prioritization", type=str, default="rank", choices=["rank", "topk"])
     group.add_argument("--buffer_duplicate_check", action=argparse.BooleanOptionalAction, default=True)
+    group.add_argument("--diversity_coeff", type=float, default=0.)
     # === ACCEL ===
     group.add_argument("--use_accel", action=argparse.BooleanOptionalAction, default=False)
     group.add_argument("--num_edits", type=int, default=5)
