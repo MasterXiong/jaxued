@@ -48,6 +48,11 @@ RUN pip install -e /user/jaxued/
 # jax
 RUN pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
+COPY examples /user/jaxued/examples
+COPY src /user/jaxued/src
+COPY tools /user/jaxued/tools
+WORKDIR /user/jaxued
+
 # Change permissions
 RUN useradd --shell /bin/bash -u ${USER_ID} -o -d /user user
 
