@@ -182,7 +182,8 @@ def evaluate_rnn(
 
         x = jax.tree.map(lambda x: x[None, ...], (obs, done))
         hstate, pi, _ = train_state.apply_fn(train_state.params, x, hstate)
-        action = pi.sample(seed=rng_action).squeeze(0)
+        # action = pi.sample(seed=rng_action).squeeze(0)
+        action = pi.probs.argmax(-1).squeeze(0)
 
         obs, next_state, reward, done, _ = jax.vmap(
             env.step, in_axes=(0, 0, 0, None)
@@ -822,6 +823,7 @@ def main(config=None, project="JAXUED_TEST"):
         
         train_state, config = load(rng_init, og_config['checkpoint_directory'])
         states, cum_rewards, episode_lengths = jax.vmap(eval, (0, None))(jax.random.split(rng_eval, og_config["eval_num_attempts"]), train_state)
+        print (f'avg return: {cum_rewards.mean()}, avg solve rate: {(cum_rewards > 0).mean()}')
         save_loc = og_config['checkpoint_directory'].replace('checkpoints', 'results')
         os.makedirs(save_loc, exist_ok=True)
         np.savez_compressed(os.path.join(save_loc, 'results.npz'), states=np.asarray(states), cum_rewards=np.asarray(cum_rewards), episode_lengths=np.asarray(episode_lengths), levels=config['eval_levels'])
