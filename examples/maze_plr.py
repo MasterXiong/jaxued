@@ -931,5 +931,11 @@ if __name__=="__main__":
     if config['mode'] == 'eval':
         os.environ['WANDB_MODE'] = 'disabled'
     
-    wandb.login()
+    if os.path.exists("wandb_key.txt"):
+        with open("wandb_key.txt", 'r') as f:
+            key = f.readline()
+        wandb.login(key=key)
+    else:
+        wandb.login()
+
     main(config, project=config["project"])
