@@ -407,7 +407,7 @@ def main(config=None, project="JAXUED_TEST"):
         tags.append("ACCEL")
     else:
         tags.append("PLR")
-    run = wandb.init(config=config, project=project, group=config["run_name"], tags=tags)
+    run = wandb.init(config=config, project=project, group=config["run_name"], name=f'{config["run_name"]}_seed_{config["seed"]}', tags=tags)
     config = wandb.config
     
     wandb.define_metric("num_updates")
@@ -437,6 +437,10 @@ def main(config=None, project="JAXUED_TEST"):
         log_dict.update({f"return/{name}": ret for name, ret in zip(config["eval_levels"], returns)})
         log_dict.update({"return/mean": returns.mean()})
         log_dict.update({"eval_ep_lengths/mean": stats['eval_ep_lengths'].mean()})
+
+        # save eval stats
+        with open(f'logs/{config["run_name"]}/{config["seed"]}/{stats["update_count"]}.pkl', 'wb') as f:
+            pickle.dump(log_dict, f)
         
         # level sampler
         log_dict.update(train_state_info["log"])
