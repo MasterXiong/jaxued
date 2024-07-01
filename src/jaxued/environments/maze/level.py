@@ -28,7 +28,7 @@ class Level:
         return well_formatted
     
     @classmethod
-    def from_str(cls, level_str):
+    def from_str(cls, level_str, count):
         level_str = level_str.strip()
         rows = level_str.split('\n')
         nrows = len(rows)
@@ -37,8 +37,8 @@ class Level:
         
         wall_map = np.zeros((nrows, ncols), dtype=bool)
         goal_pos = []
-        agent_pos = None
-        agent_dir = None
+        agent_pos = []
+        agent_dir = []
         
         for y, row in enumerate(rows):
             for x, c in enumerate(row):
@@ -47,24 +47,38 @@ class Level:
                 elif c == 'G':
                     goal_pos.append((x, y))
                 elif c == '>':
-                    assert agent_pos is None, "Agent position can only be set once."
-                    agent_pos, agent_dir = (x, y), 0
+                    # assert agent_pos is None, "Agent position can only be set once."
+                    # agent_pos, agent_dir = (x, y), 0
+                    agent_pos.append([x, y])
+                    agent_dir.append(0)
                 elif c == 'v':
-                    assert agent_pos is None, "Agent position can only be set once."
-                    agent_pos, agent_dir = (x, y), 1
+                    # assert agent_pos is None, "Agent position can only be set once."
+                    # agent_pos, agent_dir = (x, y), 1
+                    agent_pos.append([x, y])
+                    agent_dir.append(1)
                 elif c == '<':
-                    assert agent_pos is None, "Agent position can only be set once."
-                    agent_pos, agent_dir = (x, y), 2
+                    # assert agent_pos is None, "Agent position can only be set once."
+                    # agent_pos, agent_dir = (x, y), 2
+                    agent_pos.append([x, y])
+                    agent_dir.append(2)
                 elif c == '^':
-                    assert agent_pos is None, "Agent position can only be set once."
-                    agent_pos, agent_dir = (x, y), 3
+                    # assert agent_pos is None, "Agent position can only be set once."
+                    # agent_pos, agent_dir = (x, y), 3
+                    agent_pos.append([x, y])
+                    agent_dir.append(3)
                 elif c == '.':
                     pass
                 else:
                     raise Exception("Unexpected character.")
         
         assert len(goal_pos) > 0, "Goal position not set."
-        assert agent_pos is not None, "Agent position not set."
+        # assert agent_pos is not None, "Agent position not set."
+        assert len(agent_pos) > 0, "Agent position not set."
+
+        idx = count % len(agent_pos)
+
+        agent_pos = jax.lax.switch(idx, [lambda x=x: x for x in agent_pos])
+        agent_dir = jax.lax.switch(idx, [lambda x=x: x for x in agent_dir])
         
         return Level(jnp.array(wall_map), *map(lambda x: jnp.array(x, dtype=jnp.uint32), (goal_pos[0], agent_pos)), jnp.array(agent_dir, dtype=jnp.uint8), ncols, nrows)
     
@@ -115,8 +129,8 @@ class Level:
         )
     
     @classmethod
-    def load_prefabs(cls, ids):
-        return Level.stack([Level.from_str(prefabs[id]) for id in ids])
+    def load_prefabs(cls, ids, count):
+        return Level.stack([Level.from_str(prefabs[id], count) for id in ids])
 
 TrivialMaze = """
 ...
@@ -143,15 +157,15 @@ TrivialMaze3 = """
 """
         
 SixteenRooms = """
-...#..#..#...
+<..#..#.^#<..
 .>.......#...
-...#..#......
+...#<.#......
 #.###.##.###.
-...#.........
-......#..#...
+..<#..^......
+......#..#<..
 ##.#.##.###.#
-...#.....#...
-...#..#......
+...#..^..#...
+..<#..#......
 .####.##.#.##
 ...#..#..#...
 ......#....G.
@@ -159,14 +173,14 @@ SixteenRooms = """
 """
 
 SixteenRooms2 = """
-...#.....#...
+^..#^....#..<
 .>....#..#...
-...#..#..#...
+...#..#.^#...
 ####.##.###.#
-...#..#......
-......#..#...
+..^#..#.<...^
+.....>#..#...
 #.#####.#####
-...#..#..#...
+<..#..#..#...
 ...#.........
 ##.##.##.####
 ...#..#..#...
@@ -223,51 +237,51 @@ Labyrinth2 = """
 """
 
 StandardMaze = """
-.....#>...#..
+.....#>...#^.
 .###.####.##.
 .#...........
 .########.###
-........#....
+>.......#<...
 ######.#####.
 ....#..#.....
-.##...##.####
-..#.#..#...#.
+.##...##^####
+..#.#..#...#<
 #.#.##.###.#.
-#.#..#...#...
+#.#..#...#>..
 #.##.###.###.
-...#..G#.#...
+..>#..G#^#<..
 """
 
 StandardMaze2 = """
-...#.#....#..
+...#v#<...#..
 .#.#.####...#
-.#........#..
+.#v.......#.v
 .########.###
-...#..#.#.#.G
+...#.>#>#.#.G
 ##.#.##.#.#..
 >#.#....#.##.
 .#.##.###..#.
-.#..#..###.#.
-.##.##.#.#.#.
+.#..#<.###.#.
+.##.##.#^#.#.
 .#...#.#.#.#.
 .#.#.#.#.#.#.
-...#...#.....
+...#^..#.....
 """
 
 StandardMaze3 = """
-...>#.#......
+...>#v#<.....
 .####.#.####.
 .#....#.#....
 ...####.#.#.#
-##.#....#.#..
-...#.##.#.##.
-.#.#.#..#..#G
+##.#..<.#.#..
+.<.#.##.#.##.
+.#.#.#.>#..#G
 .#.#.#.###.##
-.#...#.#.#...
+.#...#.#v#..^
 .###.#.#.###.
 .#...#.#...#.
 .#.###.#.#.#.
-.#...#...#...
+^#..<#...#...
 """
 
 prefabs = {
@@ -282,4 +296,8 @@ prefabs = {
     "StandardMaze": StandardMaze.strip(),
     "StandardMaze2": StandardMaze2.strip(),
     "StandardMaze3": StandardMaze3.strip(),
+}
+
+start_pos = {
+    "SixteenRooms": [[1, 1, 0], [1, 1, 1], [1, 1, 2], [1, 1, 3], [5, 0, 1], [7, 2, 2], [11, 1, 3], [2, 4, 0], [5, 5, 2], [2, 8, 3]], 
 }

@@ -741,13 +741,13 @@ def main(config=None, project="JAXUED_TEST"):
             rng, train_state
         )
     
-    def eval(rng: chex.PRNGKey, train_state: TrainState):
+    def eval(rng: chex.PRNGKey, train_state: TrainState, eval_id):
         """
         This evaluates the current policy on the set of evaluation levels specified by config["eval_levels"].
         It returns (states, cum_rewards, episode_lengths), with shapes (num_steps, num_eval_levels, ...), (num_eval_levels,), (num_eval_levels,)
         """
         rng, rng_reset = jax.random.split(rng)
-        levels = Level.load_prefabs(config["eval_levels"])
+        levels = Level.load_prefabs(config["eval_levels"], eval_id)
         num_levels = len(config["eval_levels"])
         init_obs, init_env_state = jax.vmap(eval_env.reset_to_level, (0, 0, None))(jax.random.split(rng_reset, num_levels), levels, env_params)
         states, rewards, episode_lengths = evaluate_rnn(
@@ -775,7 +775,7 @@ def main(config=None, project="JAXUED_TEST"):
 
         # Eval
         rng, rng_eval = jax.random.split(rng)
-        states, cum_rewards, episode_lengths = jax.vmap(eval, (0, None))(jax.random.split(rng_eval, config["eval_num_attempts"]), train_state)
+        states, cum_rewards, episode_lengths = jax.vmap(eval, (0, None, 0))(jax.random.split(rng_eval, config["eval_num_attempts"]), train_state, jnp.arange(config["eval_num_attempts"]))
         
         # Collect Metrics
         eval_solve_rates = jnp.where(cum_rewards > 0, 1., 0.).mean(axis=0) # (num_eval_levels,)
@@ -822,7 +822,7 @@ def main(config=None, project="JAXUED_TEST"):
             return train_state, config
         
         train_state, config = load(rng_init, og_config['checkpoint_directory'])
-        states, cum_rewards, episode_lengths = jax.vmap(eval, (0, None))(jax.random.split(rng_eval, og_config["eval_num_attempts"]), train_state)
+        states, cum_rewards, episode_lengths = jax.vmap(eval, (0, None, 0))(jax.random.split(rng_eval, og_config["eval_num_attempts"]), train_state, jnp.arange(config["eval_num_attempts"]))
         print (f'avg return: {cum_rewards.mean()}, avg solve rate: {(cum_rewards > 0).mean()}')
         save_loc = og_config['checkpoint_directory'].replace('checkpoints', 'results')
         os.makedirs(save_loc, exist_ok=True)
