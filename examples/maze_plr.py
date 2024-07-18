@@ -888,6 +888,8 @@ if __name__=="__main__":
         "StandardMaze",
         "StandardMaze2",
         "StandardMaze3",
+        "SmallCorridor",
+        # "LargeCorridor",
     ])
     group = parser.add_argument_group('Training params')
     # === PPO === 

@@ -131,8 +131,8 @@ class LevelSampler:
             "episode_count": new_episode_count,
         }
         distance_to_new_sampled_level = compute_maze_distance(sampler["levels"].wall_map[idx].reshape(1, -1).astype(float), sampler["levels"].wall_map.reshape(self.capacity, -1).astype(float)).ravel()
-        # distance_to_sampled_levels = (distance_to_sampled_levels * count + distance_to_new_sampled_level) / (count + 1)
-        distance_to_sampled_levels = jnp.minimum(distance_to_sampled_levels, distance_to_new_sampled_level)
+        distance_to_sampled_levels = (distance_to_sampled_levels * count + distance_to_new_sampled_level) / (count + 1)
+        # distance_to_sampled_levels = jnp.minimum(distance_to_sampled_levels, distance_to_new_sampled_level)
         count += 1
         return (sampler, distance_to_sampled_levels, count), (idx, jax.tree_map(lambda x: x[idx], sampler["levels"]))
     

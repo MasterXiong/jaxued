@@ -42,7 +42,7 @@ class Level:
         
         for y, row in enumerate(rows):
             for x, c in enumerate(row):
-                if c == '#':
+                if c == '#' or c == '1':
                     wall_map[y, x] = True
                 elif c == 'G':
                     goal_pos.append((x, y))
@@ -66,7 +66,7 @@ class Level:
                     # agent_pos, agent_dir = (x, y), 3
                     agent_pos.append([x, y])
                     agent_dir.append(3)
-                elif c == '.':
+                elif c == '.' or c == '0':
                     pass
                 else:
                     raise Exception("Unexpected character.")
@@ -76,11 +76,13 @@ class Level:
         assert len(agent_pos) > 0, "Agent position not set."
 
         idx = count % len(agent_pos)
-
         agent_pos = jax.lax.switch(idx, [lambda x=x: x for x in agent_pos])
         agent_dir = jax.lax.switch(idx, [lambda x=x: x for x in agent_dir])
         
-        return Level(jnp.array(wall_map), *map(lambda x: jnp.array(x, dtype=jnp.uint32), (goal_pos[0], agent_pos)), jnp.array(agent_dir, dtype=jnp.uint8), ncols, nrows)
+        idx = count % len(goal_pos)
+        goal_pos = jax.lax.switch(idx, [lambda x=x: x for x in goal_pos])
+
+        return Level(jnp.array(wall_map), *map(lambda x: jnp.array(x, dtype=jnp.uint32), (goal_pos, agent_pos)), jnp.array(agent_dir, dtype=jnp.uint8), ncols, nrows)
     
     def to_str(self):
         w, h = self.width, self.height
@@ -284,6 +286,44 @@ StandardMaze3 = """
 ^#..<#...#...
 """
 
+SmallCorridor = """
+0 0 0 0 0 0 0 0 0 0 0 0 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 G 1 G 1 G 1 G 1 G 1 0
+> 1 1 1 1 1 1 1 1 1 1 1 0
+0 1 G 1 G 1 G 1 G 1 G 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0
+0 0 0 0 0 0 0 0 0 0 0 0 0
+"""
+
+LargeCorridor = """
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 G 1 0 1 G 1 0 1 G 1 0 1 G 1 0 1 G
+> 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0
+0 1 0 1 G 1 0 1 G 1 0 1 G 1 0 1 G 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 G
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+"""
+
 prefabs = {
     "TrivialMaze": TrivialMaze.strip(),
     "TrivialMaze2": TrivialMaze2.strip(),
@@ -296,6 +336,8 @@ prefabs = {
     "StandardMaze": StandardMaze.strip(),
     "StandardMaze2": StandardMaze2.strip(),
     "StandardMaze3": StandardMaze3.strip(),
+    "SmallCorridor": SmallCorridor.strip().replace(' ', ''), 
+    "LargeCorridor": LargeCorridor.strip().replace(' ', ''), 
 }
 
 start_pos = {
